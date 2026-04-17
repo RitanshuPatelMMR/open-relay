@@ -9,15 +9,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ritanshupatel/openrelay/ingestion-service/models"
+	"github.com/ritanshupatel/openrelay/ingestion-service/queue"
 	"github.com/ritanshupatel/openrelay/ingestion-service/store"
 )
 
 type WebhookHandler struct {
 	events *store.EventStore
+	queue  *queue.RedisQueue
 }
 
-func NewWebhookHandler(events *store.EventStore) *WebhookHandler {
-	return &WebhookHandler{events: events}
+func NewWebhookHandler(events *store.EventStore, q *queue.RedisQueue) *WebhookHandler {
+	return &WebhookHandler{events: events, queue: q}
 }
 
 func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +46,7 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. check idempotency key
+	// 3. check idempotency
 	idempotencyKey := r.Header.Get("X-Idempotency-Key")
 	if idempotencyKey != "" {
 		dup, err := h.events.IsDuplicate(ctx, projectID, idempotencyKey)
@@ -65,14 +67,14 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. collect headers as JSON
+	// 5. headers as JSON
 	headers, _ := json.Marshal(r.Header)
 
 	// 6. build event
 	var endpointID *string
-if endpoint != nil {
-    endpointID = &endpoint.ID
-}
+	if endpoint != nil {
+		endpointID = &endpoint.ID
+	}
 
 	sourceIP := r.RemoteAddr
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
@@ -80,15 +82,15 @@ if endpoint != nil {
 	}
 
 	event := &models.Event{
-    ProjectID:      projectID,
-    EndpointID:     endpointID,
-    IdempotencyKey: idempotencyKey,
-    SourceIP:       sourceIP,
-    Method:         r.Method,
-    Path:           r.URL.Path,
-    Headers:        headers,
-    Payload:        body,
-}
+		ProjectID:      projectID,
+		EndpointID:     endpointID,
+		IdempotencyKey: idempotencyKey,
+		SourceIP:       sourceIP,
+		Method:         r.Method,
+		Path:           r.URL.Path,
+		Headers:        headers,
+		Payload:        body,
+	}
 
 	// 7. save to DB
 	eventID, err := h.events.InsertEvent(ctx, event)
@@ -98,9 +100,15 @@ if endpoint != nil {
 		return
 	}
 
-	log.Printf("event saved: %s for project: %s", eventID, projectID)
+	// 8. push to Redis Streams
+	if err := h.queue.PushEvent(ctx, eventID); err != nil {
+		log.Println("redis push error:", err)
+		// don't fail — event is saved in DB, can be recovered
+	}
 
-	// 8. return 200 immediately
+	log.Printf("event queued: %s for project: %s", eventID, projectID)
+
+	// 9. return 200 immediately
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
