@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS delivery_attempts;
+DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS endpoints;
+DROP TABLE IF EXISTS projects;

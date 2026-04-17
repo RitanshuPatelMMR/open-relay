@@ -4,6 +4,9 @@ dev:
 stop:
 	docker compose down
 
+migrate:
+	cd ingestion-service && go run cmd/migrate/main.go
+
 test:
 	go test ./...
 
