@@ -7,8 +7,9 @@ import { ArrowLeft, Clock, Globe, Hash } from "lucide-react"
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
 
-export default async function EventDetailPage({ params }: { params: { id: string } }) {
-  const { event, delivery_attempts } = await getEvent(params.id)
+export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const { event, delivery_attempts } = await getEvent(id)
 
   return (
     <div className="p-8 max-w-5xl">
