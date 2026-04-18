@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -10,23 +11,25 @@ import (
 	"github.com/ritanshupatel/openrelay/ingestion-service/handlers"
 	"github.com/ritanshupatel/openrelay/ingestion-service/queue"
 	"github.com/ritanshupatel/openrelay/ingestion-service/store"
+	"github.com/ritanshupatel/openrelay/ingestion-service/telemetry"
 )
 
 func main() {
-	cfg := config.Load()
+	ctx := context.Background()
+	shutdown := telemetry.InitTracer(ctx)
+	defer shutdown()
 
+	cfg := config.Load()
 	db := store.NewDB(cfg.DBUrl)
 	defer db.Close()
 
 	q := queue.NewRedisQueue(cfg.RedisURL)
-
 	eventStore := store.NewEventStore(db)
 	webhookHandler := handlers.NewWebhookHandler(eventStore, q)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-
 	r.Get("/health", handlers.HealthHandler)
 	r.Post("/in/{projectID}", webhookHandler.Handle)
 

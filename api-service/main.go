@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,10 +13,15 @@ import (
 	appdb "github.com/ritanshupatel/openrelay/api-service/db"
 	"github.com/ritanshupatel/openrelay/api-service/handlers"
 	mw "github.com/ritanshupatel/openrelay/api-service/middleware"
+	"github.com/ritanshupatel/openrelay/api-service/telemetry"
 	ws "github.com/ritanshupatel/openrelay/api-service/websocket"
 )
 
 func main() {
+	ctx := context.Background()
+	shutdown := telemetry.InitTracer(ctx)
+	defer shutdown()
+
 	cfg := config.Load()
 	pool := appdb.Connect(cfg.DBUrl)
 	defer pool.Close()
@@ -69,6 +75,7 @@ func main() {
 	log.Printf("api-service listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }
+
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")

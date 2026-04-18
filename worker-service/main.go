@@ -11,10 +11,15 @@ import (
 	"github.com/ritanshupatel/openrelay/worker-service/config"
 	"github.com/ritanshupatel/openrelay/worker-service/deadletter"
 	"github.com/ritanshupatel/openrelay/worker-service/store"
+	"github.com/ritanshupatel/openrelay/worker-service/telemetry"
 	"github.com/ritanshupatel/openrelay/worker-service/worker"
 )
 
 func main() {
+	ctx := context.Background()
+	shutdown := telemetry.InitTracer(ctx)
+	defer shutdown()
+
 	cfg := config.Load()
 
 	db := store.NewDB(cfg.DBUrl)
@@ -47,7 +52,6 @@ func main() {
 
 	pool.Start(ctx)
 
-	// graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
