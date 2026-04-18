@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: openrelay
+          POSTGRES_USER: openrelay
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Test ingestion-service
+        working-directory: ./ingestion-service
+        env:
+          DB_URL: postgres://openrelay:secret@localhost:5432/openrelay?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+        run: go build ./...
+
+      - name: Test worker-service
+        working-directory: ./worker-service
+        env:
+          DB_URL: postgres://openrelay:secret@localhost:5432/openrelay?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+        run: go build ./...
+
+      - name: Test api-service
+        working-directory: ./api-service
+        env:
+          DB_URL: postgres://openrelay:secret@localhost:5432/openrelay?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+        run: go build ./...
+
+      - name: Build Docker images
+        run: |
+          docker build --platform linux/amd64 -t openrelay-ingestion ./ingestion-service
+          docker build --platform linux/amd64 -t openrelay-worker ./worker-service
+          docker build --platform linux/amd64 -t openrelay-api ./api-service
