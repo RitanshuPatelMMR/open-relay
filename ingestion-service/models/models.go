@@ -13,7 +13,7 @@ type Endpoint struct {
 	ID             string    `json:"id"`
 	ProjectID      string    `json:"project_id"`
 	DestinationURL string    `json:"destination_url"`
-	Description    string    `json:"description"`
+Description    *string   `json:"description"`
 	IsActive       bool      `json:"is_active"`
 	CreatedAt      time.Time `json:"created_at"`
 }
