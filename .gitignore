@@ -5,4 +5,5 @@ dist/
 .terraform/
 *.tfstate
 *.tfstate.backup
-bin/
+
+bin/terraform/terraform.tfvars
