@@ -37,8 +37,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
-	r.Use(chimw.Recoverer)
-
+	r.Use(corsMiddleware)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
@@ -69,4 +68,16 @@ func main() {
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("api-service listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
+}
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
