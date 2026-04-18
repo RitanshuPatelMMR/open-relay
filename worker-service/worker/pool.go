@@ -1,13 +1,14 @@
 package worker
 
 import (
-	"context"
-	"log"
-	"time"
+        "context"
+        "encoding/json"
+        "log"
+        "time"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/ritanshupatel/openrelay/worker-service/deadletter"
-	"github.com/ritanshupatel/openrelay/worker-service/store"
+        "github.com/redis/go-redis/v9"
+        "github.com/ritanshupatel/openrelay/worker-service/deadletter"
+        "github.com/ritanshupatel/openrelay/worker-service/store"
 )
 
 type Pool struct {
@@ -106,10 +107,24 @@ func (p *Pool) processEvent(ctx context.Context, eventID, msgID string) {
 
 		if result.Err == nil && result.StatusCode >= 200 && result.StatusCode < 300 {
 			p.events.MarkDelivered(ctx, eventID)
-			p.events.LogAttempt(ctx, eventID, result.StatusCode, result.Body, result.DurationMs, "", nil)
-			p.redis.XAck(ctx, "events", "workers", msgID)
-			log.Printf("✅ delivered event %s → %d in %dms", eventID, result.StatusCode, result.DurationMs)
-			return
+                    p.events.LogAttempt(ctx, eventID, result.StatusCode, result.Body, result.DurationMs, "", nil)
+                    p.redis.XAck(ctx, "events", "workers", msgID)
+                    statusUpdate, _ := json.Marshal(map[string]string{
+                            "type":      "delivery_update",
+                            "event_id":  eventID,
+                            "status":    "delivered",
+                            "method":    event.Method,
+                            "path":      "/",
+                            "timestamp": time.Now().UTC().Format(time.RFC3339),
+                    })
+                    pubResult := p.redis.Publish(ctx, "delivery_updates", statusUpdate)
+                    if pubResult.Err() != nil {
+                            log.Printf("❌ redis publish failed: %v", pubResult.Err())
+                    } else {
+                            log.Printf("📡 published delivery_update for event %s (receivers: %d)", eventID, pubResult.Val())
+                    }
+                    log.Printf("✅ delivered event %s → %d in %dms", eventID, result.StatusCode, result.DurationMs)
+                    return
 		}
 
 		errMsg := ""
@@ -125,10 +140,26 @@ func (p *Pool) processEvent(ctx context.Context, eventID, msgID string) {
 			log.Printf("⚠️  event %s attempt %d failed (status %d), retrying in %s", eventID, attempt, result.StatusCode, delay)
 			time.Sleep(delay)
 		} else {
-			p.events.LogAttempt(ctx, eventID, result.StatusCode, result.Body, result.DurationMs, errMsg, nil)
-			p.deadletter.Handle(ctx, eventID, errMsg)
-			p.redis.XAck(ctx, "events", "workers", msgID)
-			log.Printf("💀 event %s moved to dead letter after %d attempts", eventID, attempt)
+		p.events.MarkDelivered(ctx, eventID)
+p.events.LogAttempt(ctx, eventID, result.StatusCode, result.Body, result.DurationMs, "", nil)
+p.redis.XAck(ctx, "events", "workers", msgID)
+
+statusUpdate, _ := json.Marshal(map[string]string{
+        "type":      "delivery_update",
+        "event_id":  eventID,
+        "status":    "delivered",
+        "method":    event.Method,
+        "path":      "/",
+        "timestamp": time.Now().UTC().Format(time.RFC3339),
+})
+pubResult := p.redis.Publish(ctx, "delivery_updates", statusUpdate)
+if pubResult.Err() != nil {
+        log.Printf("❌ redis publish failed: %v", pubResult.Err())
+} else {
+        log.Printf("📡 published delivery_update for event %s (receivers: %d)", eventID, pubResult.Val())
+}
+log.Printf("✅ delivered event %s → %d in %dms", eventID, result.StatusCode, result.DurationMs)
+return
 		}
 	}
 }
